@@ -11,7 +11,7 @@ jobs:
         with:
           kernel-url: https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX
           kernel-branch: master
-          config: vendor/sm6250_defconfig
+          config: LawRun_defconfig
           arch: arm64
           aosp-gcc: true
           aosp-clang: true
