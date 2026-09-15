@@ -28,7 +28,10 @@ jobs:
 
       - name: Inject KernelSU v0.9.3 (The Fix)
         run: |
-          # This downloads the exact compatible version directly into the missing folder
+          # Purge any existing broken folder or git-link first
+          rm -rf /home/runner/kernel/drivers/kernelsu
+          
+          # Clone compatible v0.9.3 cleanly
           git clone -b v0.9.3 https://github.com/tiann/KernelSU /home/runner/kernel/drivers/kernelsu
 
       - name: Compile the Kernel
