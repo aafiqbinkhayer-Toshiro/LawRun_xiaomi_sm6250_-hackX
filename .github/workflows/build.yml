@@ -1,28 +1,22 @@
-name:name: Build LawRun Miatoll Kernel
-
+name: CI - LawRun Kernel sm6250
 on:
   workflow_dispatch:
 
 jobs:
   build-kernel:
-    name: Build Kernel
     runs-on: ubuntu-22.04
     steps:
-      - name: Workaround for Docker cleanup bug
-        run: docker pull alpine:latest
-
-      - name: Build Kernel
-        uses: dabao1955/kernel_build_action@v1.6.1
+      - name: Build
+        uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX
-          branch: master
-          config: LawRun_defconfig
+          kernel-branch: master
+          config: vendor/sm6250_defconfig
           arch: arm64
           aosp-gcc: true
           aosp-clang: true
-          android-version: "12"
-          aosp-clang-version: r416183b
-          anykernel3: true
-          release: true
-          access-token: ${{ secrets.GITHUB_TOKEN }}|| echo "Nothing to commit"
+          android-version: 12
+          ksu: true
+          ksu-version: v0.9.5 
+          anykernel3: trueTOKEN }}|| echo "Nothing to commit"
           git push
