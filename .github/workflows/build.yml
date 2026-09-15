@@ -8,7 +8,6 @@ jobs:
     name: Build Kernel
     runs-on: ubuntu-22.04
     steps:
-      # ডকার ক্লিনআপ বাগের সমাধানের জন্য একটি ছোট ইমেজ ডাউনলোড করা হচ্ছে
       - name: Workaround for Docker cleanup bug
         run: docker pull alpine:latest
 
@@ -16,12 +15,12 @@ jobs:
         uses: dabao1955/kernel_build_action@v1.6.1
         with:
           kernel-url: https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX
-          branch: master # 'kernel-branch' পরিবর্তন করে 'branch' করা হয়েছে
+          branch: master
           config: LawRun_defconfig
           arch: arm64
           aosp-gcc: true
           aosp-clang: true
-          android-version: "11"
+          android-version: "12"
           aosp-clang-version: r416183b
           anykernel3: true
           release: true
