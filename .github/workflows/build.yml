@@ -18,5 +18,4 @@ jobs:
           android-version: 12
           ksu: true
           ksu-version: v0.9.5 
-          anykernel3: trueTOKEN }}|| echo "Nothing to commit"
-          git push
+          anykernel3: true
