@@ -1,4 +1,4 @@
-name: CI - LawRun Kernel sm6250
+name: CI - LawRun Kernel sm6250 (KSU Fixed)
 on:
   workflow_dispatch:
 
@@ -6,16 +6,62 @@ jobs:
   build-kernel:
     runs-on: ubuntu-22.04
     steps:
-      - name: Build
-        uses: dabao1955/kernel_build_action@main
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            binutils git make bc bison openssl curl zip kmod cpio flex \
+            libelf-dev libssl-dev libtfm-dev libc6-dev device-tree-compiler \
+            ca-certificates python3 xz-utils aria2 build-essential ccache \
+            pigz parallel jq
+
+      - name: Download Toolchains (Proton Clang & GCC)
+        run: |
+          # Using Proton Clang as it avoids tar extraction errors and compiles faster
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git /home/runner/clang
+          git clone --depth=1 -b android12-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 /home/runner/gcc-64
+          git clone --depth=1 -b android12-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 /home/runner/gcc-32
+
+      - name: Clone Your Kernel Source
+        run: |
+          git clone --depth=1 -b master https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX /home/runner/kernel
+
+      - name: Inject KernelSU v0.9.3 (The Fix)
+        run: |
+          # This downloads the exact compatible version directly into the missing folder
+          git clone -b v0.9.3 https://github.com/tiann/KernelSU /home/runner/kernel/drivers/kernelsu
+
+      - name: Compile the Kernel
+        run: |
+          cd /home/runner/kernel
+          export PATH="/home/runner/clang/bin:$PATH"
+          export CROSS_COMPILE="/home/runner/gcc-64/bin/aarch64-linux-android-"
+          export CROSS_COMPILE_ARM32="/home/runner/gcc-32/bin/arm-linux-androideabi-"
+          
+          # Generating defconfig
+          make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- LawRun_defconfig
+          
+          # Starting compilation
+          make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- all
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git /home/runner/AnyKernel3
+          # Copy the compiled Image to AK3 folder
+          find /home/runner/kernel/out/arch/arm64/boot/ -maxdepth 1 -name "Image*" -exec cp {} /home/runner/AnyKernel3/ \;
+          cd /home/runner/AnyKernel3
+          
+          # Remove device checks so it flashes successfully on sm6250 in TWRP/OrangeFox
+          sed -i 's/device.name1=.*/device.name1=joyeuse/g' anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=miatoll/g' anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=excalibur/g' anykernel.sh
+          sed -i 's/device.name4=.*/device.name4=curtana/g' anykernel.sh
+          sed -i 's/device.name5=.*/device.name5=gram/g' anykernel.sh
+          
+          zip -r9 ../LawRun-sm6250-KSU-v0.9.3.zip *
+          
+      - name: Upload Flashable Zip
+        uses: actions/upload-artifact@v4
         with:
-          kernel-url: https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX
-          kernel-branch: master
-          config: LawRun_defconfig
-          arch: arm64
-          aosp-gcc: true
-          aosp-clang: true
-          aosp-clang-version: r383902
-          android-version: 12
-          ksu: false
-          anykernel3: true
+          name: LawRun-sm6250-KSU-Zip
+          path: /home/runner/LawRun-sm6250-KSU-v0.9.3.zip
