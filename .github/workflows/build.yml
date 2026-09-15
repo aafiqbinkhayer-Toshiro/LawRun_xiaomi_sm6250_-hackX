@@ -1,4 +1,4 @@
-name: Build LawRun Miatoll Kernel
+name:name: Build LawRun Miatoll Kernel
 
 on:
   workflow_dispatch:
@@ -24,4 +24,5 @@ jobs:
           aosp-clang-version: r416183b
           anykernel3: true
           release: true
-          access-token: ${{ secrets.GITHUB_TOKEN }}
+          access-token: ${{ secrets.GITHUB_TOKEN }}|| echo "Nothing to commit"
+          git push
