@@ -26,13 +26,21 @@ jobs:
         run: |
           git clone --depth=1 -b master https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX /home/runner/kernel
 
-      - name: Inject KernelSU v0.9.3 (The Fix)
+     - name: Inject KernelSU v0.9.3 (The Fix)
         run: |
-          # Purge any existing broken folder or git-link first
+          # Remove broken links or directory
           rm -rf /home/runner/kernel/drivers/kernelsu
           
-          # Clone compatible v0.9.3 cleanly
+          # Clone repository
           git clone -b v0.9.3 https://github.com/tiann/KernelSU /home/runner/kernel/drivers/kernelsu
+          
+          # Fix path mismatch: move contents of kernel/ to root of drivers/kernelsu/
+          if [ -d "/home/runner/kernel/drivers/kernelsu/kernel" ]; then
+            cp -r /home/runner/kernel/drivers/kernelsu/kernel/* /home/runner/kernel/drivers/kernelsu/
+          fi
+          
+          # Verify the Kconfig exists directly under drivers/kernelsu/
+          ls -la /home/runner/kernel/drivers/kernelsu/Kconfig
 
       - name: Compile the Kernel
         run: |
