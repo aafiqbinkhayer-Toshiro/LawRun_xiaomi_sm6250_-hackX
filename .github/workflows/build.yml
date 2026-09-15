@@ -13,7 +13,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y \
             binutils git make bc bison openssl curl zip kmod cpio flex \
             libelf-dev libssl-dev libtfm-dev libc6-dev device-tree-compiler \
-            ca-certificates python3 xz-utils aria2 build-essential ccache \
+            ca-certificates python3 python-is-python3 xz-utils aria2 build-essential ccache \
             pigz parallel jq
 
       - name: Download Toolchains (Proton Clang & GCC)
@@ -31,7 +31,6 @@ jobs:
           cd /home/runner/kernel
           rm -rf drivers/kernelsu KernelSU
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.3
-          ls -la drivers/kernelsu
 
       - name: Compile the Kernel
         run: |
@@ -40,16 +39,33 @@ jobs:
           export CROSS_COMPILE="/home/runner/gcc-64/bin/aarch64-linux-android-"
           export CROSS_COMPILE_ARM32="/home/runner/gcc-32/bin/arm-linux-androideabi-"
           
+          # Defconfig তৈরি
           make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- LawRun_defconfig
+          
+          # KSU এবং প্রয়োজনীয় ডিপেন্ডেন্সি এনাবল
           ./scripts/config --file out/.config -e KSU
+          ./scripts/config --file out/.config -e OVERLAY_FS
+          
           make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
-          make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- all
+          
+          # ফুল কার্নেল কম্পাইলেশন
+          make -j$(nproc) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=/home/runner/gcc-64/bin/aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=/home/runner/gcc-32/bin/arm-linux-androideabi- \
+            AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            all
 
       - name: Package with AnyKernel3
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git /home/runner/AnyKernel3
-          find /home/runner/kernel/out/arch/arm64/boot/ -maxdepth 1 -name "Image*" -exec cp {} /home/runner/AnyKernel3/ \;
-          find /home/runner/kernel/out/arch/arm64/boot/ -maxdepth 1 -name "dtbo.img" -exec cp {} /home/runner/AnyKernel3/ \; || true
+          
+          # Image.gz / Image.gz-dtb এবং dtbo কপি (Nested path সহ খুঁজবে)
+          find /home/runner/kernel/out/arch/arm64/boot/ -name "Image*" -exec cp {} /home/runner/AnyKernel3/ \;
+          find /home/runner/kernel/out/arch/arm64/boot/ -name "dtbo.img" -exec cp {} /home/runner/AnyKernel3/ \; || true
+          find /home/runner/kernel/out/arch/arm64/boot/ -name "*.dtb" -exec cp {} /home/runner/AnyKernel3/dtb \; || true
           
           cd /home/runner/AnyKernel3
           sed -i 's/device.name1=.*/device.name1=joyeuse/g' anykernel.sh
