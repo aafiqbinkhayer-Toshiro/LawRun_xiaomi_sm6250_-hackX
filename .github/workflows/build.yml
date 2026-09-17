@@ -1,83 +1,123 @@
-name: CI - LawRun Kernel sm6250 (KSU Fixed)
+name: Build LawRun Kernel (sm6250 - miatoll)
 
 on:
   workflow_dispatch:
+    inputs:
+      defconfig:
+        description: 'Defconfig to build'
+        required: false
+        default: 'LawRun_defconfig'
+  push:
+    branches:
+      - master
+
+env:
+  DEFCONFIG: ${{ github.event.inputs.defconfig || 'LawRun_defconfig' }}
+  KERNEL_DIR: ${{ github.workspace }}
+  OUT_DIR: out
+  ARCH: arm64
+  ANYKERNEL_REPO: https://github.com/SonalSingh18/AnyKernel3
+  PROTON_CLANG_REPO: https://github.com/kdrag0n/proton-clang
 
 jobs:
-  build-kernel:
-    runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Install Build Dependencies
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            binutils git make bc bison openssl curl zip kmod cpio flex \
-            libelf-dev libssl-dev libtfm-dev libc6-dev device-tree-compiler \
-            ca-certificates python3 python-is-python3 xz-utils aria2 build-essential ccache \
-            pigz parallel jq
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex \
+            git libssl-dev libelf-dev python3 python3-pip \
+            zip unzip lld llvm
 
-      - name: Download Toolchains (Proton Clang & GCC)
-        run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git /home/runner/clang
-          git clone --depth=1 -b android12-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 /home/runner/gcc-64
-          git clone --depth=1 -b android12-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 /home/runner/gcc-32
+      - name: Set up ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ env.DEFCONFIG }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ env.DEFCONFIG }}-
 
-      - name: Clone Your Kernel Source
-        run: |
-          git clone --depth=1 -b master https://github.com/aafiqbinkhayer-Toshiro/LawRun_xiaomi_sm6250_-hackX /home/runner/kernel
+      - name: Cache Proton Clang toolchain
+        id: cache-proton
+        uses: actions/cache@v4
+        with:
+          path: ~/proton
+          key: proton-clang-${{ runner.os }}
 
-      - name: Setup KernelSU
-        run: |
-          cd /home/runner/kernel
-          rm -rf drivers/kernelsu KernelSU
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.3
+      - name: Clone Proton Clang
+        if: steps.cache-proton.outputs.cache-hit != 'true'
+        run: git clone --depth=1 --single-branch ${{ env.PROTON_CLANG_REPO }} ~/proton
 
-      - name: Compile the Kernel
+      - name: Export toolchain path
+        run: echo "$HOME/proton/bin" >> $GITHUB_PATH
+
+      - name: Verify defconfig exists
         run: |
-          cd /home/runner/kernel
-          export PATH="/home/runner/clang/bin:$PATH"
-          export CROSS_COMPILE="/home/runner/gcc-64/bin/aarch64-linux-android-"
-          export CROSS_COMPILE_ARM32="/home/runner/gcc-32/bin/arm-linux-androideabi-"
-          
-          # Defconfig তৈরি
-          make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- LawRun_defconfig
-          
-          # KSU এবং প্রয়োজনীয় ডিপেন্ডেন্সি এনাবল
-          ./scripts/config --file out/.config -e KSU
-          ./scripts/config --file out/.config -e OVERLAY_FS
-          
-          make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
-          
-          # ফুল কার্নেল কম্পাইলেশন
-          make -j$(nproc) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=/home/runner/gcc-64/bin/aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=/home/runner/gcc-32/bin/arm-linux-androideabi- \
-            AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
-            all
+          if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG }}" ]; then
+            echo "::error::${{ env.DEFCONFIG }} not found in arch/${{ env.ARCH }}/configs/"
+            exit 1
+          fi
+
+      - name: Generate .config
+        run: |
+          mkdir -p ${{ env.OUT_DIR }}
+          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
+
+      - name: Build kernel
+        run: |
+          export PATH="$HOME/proton/bin:$PATH"
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          make -j$(nproc --all) O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} \
+            CC="ccache clang" \
+            LD=ld.lld \
+            AR=llvm-ar \
+            AS=llvm-as \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            Image.gz-dtb dtbo.img
+
+      - name: Check build output
+        run: |
+          if [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ] || \
+             [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img" ]; then
+            echo "::error::Build output missing — compilation likely failed."
+            exit 1
+          fi
 
       - name: Package with AnyKernel3
         run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git /home/runner/AnyKernel3
-          
-          # Image.gz / Image.gz-dtb এবং dtbo কপি (Nested path সহ খুঁজবে)
-          find /home/runner/kernel/out/arch/arm64/boot/ -name "Image*" -exec cp {} /home/runner/AnyKernel3/ \;
-          find /home/runner/kernel/out/arch/arm64/boot/ -name "dtbo.img" -exec cp {} /home/runner/AnyKernel3/ \; || true
-          find /home/runner/kernel/out/arch/arm64/boot/ -name "*.dtb" -exec cp {} /home/runner/AnyKernel3/dtb \; || true
-          
-          cd /home/runner/AnyKernel3
-          sed -i 's/device.name1=.*/device.name1=joyeuse/g' anykernel.sh
-          sed -i 's/device.name2=.*/device.name2=miatoll/g' anykernel.sh
-          sed -i 's/device.name3=.*/device.name3=excalibur/g' anykernel.sh
-          sed -i 's/device.name4=.*/device.name4=curtana/g' anykernel.sh
-          sed -i 's/device.name5=.*/device.name5=gram/g' anykernel.sh
-          
-          zip -r9 /home/runner/LawRun-sm6250-KSU-v0.9.3.zip * -x .git README.md *placeholder
+          git clone -q ${{ env.ANYKERNEL_REPO }} AnyKernel3
+          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/
+          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
+          cd AnyKernel3
+          ZIP_NAME="LawRun-miatoll-$(date '+%Y%m%d-%H%M').zip"
+          zip -r9 "../$ZIP_NAME" * -x '*.git*' README.md '*placeholder*'
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
-      - name: Upload Flashable Zip
+      - name: Upload flashable zip
         uses: actions/upload-artifact@v4
         with:
-          name: LawRun-sm6250-KSU-Zip
-          path: /home/runner/LawRun-sm6250-KSU-v0.9.3.zip
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 14
+
+      - name: Upload raw kernel images
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-boot-images
+          path: |
+            ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
+            ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
+          retention-days: 14
