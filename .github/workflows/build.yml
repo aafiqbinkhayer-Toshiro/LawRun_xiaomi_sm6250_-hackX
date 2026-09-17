@@ -42,6 +42,10 @@ jobs:
             sudo ln -sf "$(command -v python3)" /usr/local/bin/python2
           fi
 
+      - name: Patch dtc python scripts for Python 3
+        run: |
+          find scripts/dtc -name "*.py" -exec sed -i 's/\bxrange(/range(/g' {} + 2>/dev/null || true
+
       - name: Set up ccache
         uses: actions/cache@v4
         with:
