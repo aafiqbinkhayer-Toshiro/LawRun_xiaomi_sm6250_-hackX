@@ -36,6 +36,12 @@ jobs:
             git libssl-dev libelf-dev python3 python3-pip \
             zip unzip lld llvm
 
+      - name: Provide python2 command
+        run: |
+          if ! command -v python2 &> /dev/null; then
+            sudo ln -sf "$(command -v python3)" /usr/local/bin/python2
+          fi
+
       - name: Set up ccache
         uses: actions/cache@v4
         with:
