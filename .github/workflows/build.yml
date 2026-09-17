@@ -55,6 +55,17 @@ jobs:
         if: steps.cache-proton.outputs.cache-hit != 'true'
         run: git clone --depth=1 --single-branch ${{ env.PROTON_CLANG_REPO }} ~/proton
 
+      - name: Set up KernelSU
+        run: |
+          if [ -f "./KernelSU" ]; then
+            echo "Repo's own KernelSU setup script found — running it."
+            chmod +x ./KernelSU
+            ./KernelSU
+          else
+            echo "No repo-local KernelSU script found — using official non-GKI setup (locked to v0.9.5 for kernel 4.14)."
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+          fi
+
       - name: Verify defconfig exists
         run: |
           if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG }}" ]; then
