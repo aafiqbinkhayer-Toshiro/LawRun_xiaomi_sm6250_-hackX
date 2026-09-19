@@ -74,6 +74,13 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           fi
 
+      - name: Ensure drivers/kernelsu is actually built
+        run: |
+          if [ -d "drivers/kernelsu" ] && ! grep -q "kernelsu/" drivers/Makefile; then
+            echo "drivers/Makefile is missing the kernelsu build line — adding it."
+            echo 'obj-y += kernelsu/' >> drivers/Makefile
+          fi
+
       - name: Verify defconfig exists
         run: |
           if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG }}" ]; then
@@ -104,6 +111,39 @@ jobs:
             CROSS_COMPILE_ARM32="$TC/arm-linux-gnueabi-" \
             Image.gz-dtb dtbo.img
 
+      - name: Check build output
+        run: |
+          if [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ] || \
+             [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img" ]; then
+            echo "::error::Build output missing — compilation likely failed."
+            exit 1
+          fi
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone -q ${{ env.ANYKERNEL_REPO }} AnyKernel3
+          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/
+          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
+          cd AnyKernel3
+          ZIP_NAME="LawRun-miatoll-$(date '+%Y%m%d-%H%M').zip"
+          zip -r9 "../$ZIP_NAME" * -x '*.git*' README.md '*placeholder*'
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload flashable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 14
+
+      - name: Upload raw kernel images
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-boot-images
+          path: |
+            ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
+            ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
+          retention-days: 14
       - name: Check build output
         run: |
           if [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ] || \
