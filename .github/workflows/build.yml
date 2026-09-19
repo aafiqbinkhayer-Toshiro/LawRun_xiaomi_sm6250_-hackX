@@ -36,15 +36,12 @@ jobs:
             git libssl-dev libelf-dev python3 python3-pip \
             zip unzip lld llvm
 
-      - name: Provide python2 command
+      - name: Set up real Python 2.7
         run: |
-          if ! command -v python2 &> /dev/null; then
-            sudo ln -sf "$(command -v python3)" /usr/local/bin/python2
-          fi
-
-      - name: Patch dtc python scripts for Python 3
-        run: |
-          find scripts/dtc -name "*.py" -exec sed -i 's/\bxrange(/range(/g' {} + 2>/dev/null || true
+          curl -sSL -o /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+          bash /tmp/miniconda.sh -b -p $HOME/miniconda
+          "$HOME/miniconda/bin/conda" create -y -n py27 -c conda-forge python=2.7
+          sudo ln -sf "$HOME/miniconda/envs/py27/bin/python2.7" /usr/local/bin/python2
 
       - name: Set up ccache
         uses: actions/cache@v4
