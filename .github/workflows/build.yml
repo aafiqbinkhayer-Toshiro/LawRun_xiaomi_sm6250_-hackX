@@ -108,6 +108,27 @@ jobs:
         run: |
           grep -E "CONFIG_KSU|CONFIG_KPROBES" ${{ env.OUT_DIR }}/.config 2>&1 || echo "no CONFIG_KSU/CONFIG_KPROBES lines found in .config"
 
+      - name: Diagnose drivers/Makefile context + standalone kernelsu build
+        run: |
+          echo "--- context around our appended obj-y line ---"
+          LINE=$(grep -n "^obj-y += kernelsu/$" drivers/Makefile | tail -1 | cut -d: -f1)
+          if [ -n "$LINE" ]; then
+            START=$((LINE>8 ? LINE-8 : 1))
+            sed -n "${START},$((LINE+3))p" drivers/Makefile
+          else
+            echo "could not locate the appended line"
+          fi
+          echo "--- attempting to build ONLY drivers/kernelsu ---"
+          TC="$HOME/proton/bin"
+          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} \
+            CC="$TC/clang" LD="$TC/ld.lld" AR="$TC/llvm-ar" AS="$TC/llvm-as" \
+            NM="$TC/llvm-nm" OBJCOPY="$TC/llvm-objcopy" OBJDUMP="$TC/llvm-objdump" \
+            STRIP="$TC/llvm-strip" CROSS_COMPILE="$TC/aarch64-linux-gnu-" \
+            CROSS_COMPILE_ARM32="$TC/arm-linux-gnueabi-" \
+            drivers/kernelsu 2>&1 | tail -60
+          echo "--- resulting object files ---"
+          find ${{ env.OUT_DIR }}/drivers/kernelsu -name "*.o" 2>&1 || echo "out/drivers/kernelsu has no .o files / doesn't exist"
+
       - name: Build kernel
         run: |
           export USE_CCACHE=1
