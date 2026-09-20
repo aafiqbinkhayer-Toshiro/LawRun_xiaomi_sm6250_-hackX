@@ -81,6 +81,17 @@ jobs:
             echo 'obj-y += kernelsu/' >> drivers/Makefile
           fi
 
+      - name: Diagnose KernelSU input hook symbol
+        run: |
+          echo "--- drivers/kernelsu contents ---"
+          ls -la drivers/kernelsu 2>&1 || echo "drivers/kernelsu MISSING"
+          echo "--- drivers/Makefile kernelsu lines ---"
+          grep -n "kernelsu" drivers/Makefile 2>&1 || echo "no kernelsu reference in drivers/Makefile"
+          echo "--- searching for ksu_input_hook definition ---"
+          grep -rn "ksu_input_hook" drivers/kernelsu 2>&1 || echo "ksu_input_hook NOT FOUND anywhere in drivers/kernelsu"
+          echo "--- searching for ksu_handle_input_handle_event definition ---"
+          grep -rn "ksu_handle_input_handle_event" drivers/kernelsu 2>&1 || echo "ksu_handle_input_handle_event NOT FOUND anywhere in drivers/kernelsu"
+
       - name: Verify defconfig exists
         run: |
           if [ ! -f "arch/${{ env.ARCH }}/configs/${{ env.DEFCONFIG }}" ]; then
@@ -92,6 +103,10 @@ jobs:
         run: |
           mkdir -p ${{ env.OUT_DIR }}
           make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
+
+      - name: Diagnose KSU/kprobe config
+        run: |
+          grep -E "CONFIG_KSU|CONFIG_KPROBES" ${{ env.OUT_DIR }}/.config 2>&1 || echo "no CONFIG_KSU/CONFIG_KPROBES lines found in .config"
 
       - name: Build kernel
         run: |
@@ -111,39 +126,6 @@ jobs:
             CROSS_COMPILE_ARM32="$TC/arm-linux-gnueabi-" \
             Image.gz-dtb dtbo.img
 
-      - name: Check build output
-        run: |
-          if [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ] || \
-             [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img" ]; then
-            echo "::error::Build output missing — compilation likely failed."
-            exit 1
-          fi
-
-      - name: Package with AnyKernel3
-        run: |
-          git clone -q ${{ env.ANYKERNEL_REPO }} AnyKernel3
-          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/
-          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
-          cd AnyKernel3
-          ZIP_NAME="LawRun-miatoll-$(date '+%Y%m%d-%H%M').zip"
-          zip -r9 "../$ZIP_NAME" * -x '*.git*' README.md '*placeholder*'
-          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-
-      - name: Upload flashable zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ZIP_NAME }}
-          path: ${{ env.ZIP_NAME }}
-          retention-days: 14
-
-      - name: Upload raw kernel images
-        uses: actions/upload-artifact@v4
-        with:
-          name: raw-boot-images
-          path: |
-            ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
-            ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
-          retention-days: 14
       - name: Check build output
         run: |
           if [ ! -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ] || \
