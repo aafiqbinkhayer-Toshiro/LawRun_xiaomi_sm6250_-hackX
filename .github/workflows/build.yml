@@ -81,13 +81,25 @@ jobs:
             echo 'obj-y += kernelsu/' >> drivers/Makefile
           fi
 
-      - name: Fix ksu_input_hook function in input.c
+      - name: Fix ksu_input_hook in input.c
         run: |
-          if grep -q "extern int ksu_input_hook" drivers/input/input.c; then
-            echo "Fixing function declaration and function call in input.c"
-            sed -i 's/extern int ksu_input_hook/extern int ksu_handle_input_handle_event/g' drivers/input/input.c
-            sed -i 's/ksu_input_hook(&type/ksu_handle_input_handle_event(&type/g' drivers/input/input.c
-          fi
+          python3 -c "
+          import re
+          path = 'drivers/input/input.c'
+          try:
+              with open(path, 'r') as f:
+                  content = f.read()
+              if 'ksu_input_hook' in content:
+                  print('Patching ksu_input_hook in ' + path)
+                  content = re.sub(r'extern\s+bool\s+ksu_input_hook[^;]*;', '// extern bool ksu_input_hook;', content)
+                  content = re.sub(r'ksu_input_hook\b(?!\s*\()', '1', content)
+                  content = re.sub(r'\bksu_input_hook\b', 'ksu_handle_input_handle_event', content)
+                  with open(path, 'w') as f:
+                      f.write(content)
+                  print('Successfully patched input.c')
+          except Exception as e:
+              print('Error patching input.c:', e)
+          "
 
       - name: Verify defconfig exists
         run: |
@@ -102,6 +114,7 @@ jobs:
           make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
           echo "CONFIG_KSU=y" >> ${{ env.OUT_DIR }}/.config
           echo "CONFIG_KSU_DEFAULT_SU=y" >> ${{ env.OUT_DIR }}/.config
+          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} olddefconfig
 
       - name: Build kernel
         run: |
