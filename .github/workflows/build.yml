@@ -1,4 +1,4 @@
-name: Build LawRun Kernel (sm6250 - miatoll)
+Name: Build LawRun Kernel (sm6250 - miatoll)
 
 on:
   workflow_dispatch:
@@ -81,16 +81,12 @@ jobs:
             echo 'obj-y += kernelsu/' >> drivers/Makefile
           fi
 
-      - name: Diagnose KernelSU input hook symbol
+      - name: Fix legacy ksu_input_hook in input.c
         run: |
-          echo "--- drivers/kernelsu contents ---"
-          ls -la drivers/kernelsu 2>&1 || echo "drivers/kernelsu MISSING"
-          echo "--- drivers/Makefile kernelsu lines ---"
-          grep -n "kernelsu" drivers/Makefile 2>&1 || echo "no kernelsu reference in drivers/Makefile"
-          echo "--- searching for ksu_input_hook definition ---"
-          grep -rn "ksu_input_hook" drivers/kernelsu 2>&1 || echo "ksu_input_hook NOT FOUND anywhere in drivers/kernelsu"
-          echo "--- searching for ksu_handle_input_handle_event definition ---"
-          grep -rn "ksu_handle_input_handle_event" drivers/kernelsu 2>&1 || echo "ksu_handle_input_handle_event NOT FOUND anywhere in drivers/kernelsu"
+          if grep -q "ksu_input_hook" drivers/input/input.c; then
+            echo "Replacing legacy ksu_input_hook with ksu_handle_input_handle_event in input.c"
+            sed -i 's/ksu_input_hook/ksu_handle_input_handle_event/g' drivers/input/input.c
+          fi
 
       - name: Verify defconfig exists
         run: |
@@ -99,35 +95,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate .config
+      - name: Generate .config and Enable KSU
         run: |
           mkdir -p ${{ env.OUT_DIR }}
           make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
-
-      - name: Diagnose KSU/kprobe config
-        run: |
-          grep -E "CONFIG_KSU|CONFIG_KPROBES" ${{ env.OUT_DIR }}/.config 2>&1 || echo "no CONFIG_KSU/CONFIG_KPROBES lines found in .config"
-
-      - name: Diagnose drivers/Makefile context + standalone kernelsu build
-        run: |
-          echo "--- context around our appended obj-y line ---"
-          LINE=$(grep -n "^obj-y += kernelsu/$" drivers/Makefile | tail -1 | cut -d: -f1)
-          if [ -n "$LINE" ]; then
-            START=$((LINE>8 ? LINE-8 : 1))
-            sed -n "${START},$((LINE+3))p" drivers/Makefile
-          else
-            echo "could not locate the appended line"
-          fi
-          echo "--- attempting to build ONLY drivers/kernelsu ---"
-          TC="$HOME/proton/bin"
-          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} \
-            CC="$TC/clang" LD="$TC/ld.lld" AR="$TC/llvm-ar" AS="$TC/llvm-as" \
-            NM="$TC/llvm-nm" OBJCOPY="$TC/llvm-objcopy" OBJDUMP="$TC/llvm-objdump" \
-            STRIP="$TC/llvm-strip" CROSS_COMPILE="$TC/aarch64-linux-gnu-" \
-            CROSS_COMPILE_ARM32="$TC/arm-linux-gnueabi-" \
-            drivers/kernelsu 2>&1 | tail -60
-          echo "--- resulting object files ---"
-          find ${{ env.OUT_DIR }}/drivers/kernelsu -name "*.o" 2>&1 || echo "out/drivers/kernelsu has no .o files / doesn't exist"
+          echo "CONFIG_KSU=y" >> ${{ env.OUT_DIR }}/.config
+          echo "CONFIG_KSU_DEFAULT_SU=y" >> ${{ env.OUT_DIR }}/.config
 
       - name: Build kernel
         run: |
