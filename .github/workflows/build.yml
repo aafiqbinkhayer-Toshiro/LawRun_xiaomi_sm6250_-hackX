@@ -1,4 +1,4 @@
-Name: Build LawRun Kernel (sm6250 - miatoll)
+name: Build LawRun Kernel (sm6250 - miatoll)
 
 on:
   workflow_dispatch:
