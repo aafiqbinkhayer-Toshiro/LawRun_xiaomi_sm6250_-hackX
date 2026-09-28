@@ -16,7 +16,7 @@ env:
   KERNEL_DIR: ${{ github.workspace }}
   OUT_DIR: out
   ARCH: arm64
-  ANYKERNEL_REPO: https://github.com/SonalSingh18/AnyKernel3
+  ANYKERNEL_REPO: https://github.com/osm0sis/AnyKernel3
   PROTON_CLANG_REPO: https://github.com/kdrag0n/proton-clang
 
 jobs:
@@ -142,23 +142,7 @@ jobs:
             exit 1
           fi
 
-      - name: Package with AnyKernel3
-        run: |
-          git clone -q ${{ env.ANYKERNEL_REPO }} AnyKernel3
-          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/
-          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
-          cd AnyKernel3
-          ZIP_NAME="LawRun-miatoll-$(date '+%Y%m%d-%H%M').zip"
-          zip -r9 "../$ZIP_NAME" * -x '*.git*' README.md '*placeholder*'
-          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-
-      - name: Upload flashable zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ZIP_NAME }}
-          path: ${{ env.ZIP_NAME }}
-          retention-days: 14
-
+      # Raw images are uploaded first so a packaging problem never loses the build.
       - name: Upload raw kernel images
         uses: actions/upload-artifact@v4
         with:
@@ -167,3 +151,73 @@ jobs:
             ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
             ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
           retention-days: 14
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 -q ${{ env.ANYKERNEL_REPO }} AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/LICENSE
+
+          cat > AnyKernel3/anykernel.sh << 'AKEOF'
+          ### AnyKernel3 Ramdisk Mod Script
+
+          ## AnyKernel setup
+          # global properties
+          properties() { '
+          kernel.string=LawRun Kernel for miatoll (sm6250)
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=miatoll
+          device.name2=curtana
+          device.name3=excalibur
+          device.name4=joyeuse
+          device.name5=gram
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; } # end properties
+
+          ### AnyKernel install
+          ## boot files attributes
+          boot_attributes() {
+          set_perm_recursive 0 0 755 644 $RAMDISK/*;
+          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+          } # end attributes
+
+          # boot shell variables (both cases set for compatibility across AK3 versions)
+          BLOCK=/dev/block/bootdevice/by-name/boot;
+          IS_SLOT_DEVICE=0;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+          block=$BLOCK;
+          is_slot_device=$IS_SLOT_DEVICE;
+          ramdisk_compression=$RAMDISK_COMPRESSION;
+          patch_vbmeta_flag=$PATCH_VBMETA_FLAG;
+
+          # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
+          . tools/ak3-core.sh;
+
+          # boot install
+          dump_boot;
+          write_boot;
+
+          # dtbo install
+          flash_generic dtbo;
+          AKEOF
+
+          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/
+          cp ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
+          cd AnyKernel3
+          ZIP_NAME="LawRun-miatoll-$(date '+%Y%m%d-%H%M').zip"
+          zip -r9 "../$ZIP_NAME" . -x '*.git*' '*placeholder*'
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload flashable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 14
+          
