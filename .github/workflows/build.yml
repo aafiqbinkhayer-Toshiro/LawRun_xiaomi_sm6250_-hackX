@@ -81,11 +81,12 @@ jobs:
             echo 'obj-y += kernelsu/' >> drivers/Makefile
           fi
 
-      - name: Fix legacy ksu_input_hook in input.c
+      - name: Fix ksu_input_hook function in input.c
         run: |
-          if grep -q "ksu_input_hook" drivers/input/input.c; then
-            echo "Replacing legacy ksu_input_hook with ksu_handle_input_handle_event in input.c"
-            sed -i 's/ksu_input_hook/ksu_handle_input_handle_event/g' drivers/input/input.c
+          if grep -q "extern int ksu_input_hook" drivers/input/input.c; then
+            echo "Fixing function declaration and function call in input.c"
+            sed -i 's/extern int ksu_input_hook/extern int ksu_handle_input_handle_event/g' drivers/input/input.c
+            sed -i 's/ksu_input_hook(&type/ksu_handle_input_handle_event(&type/g' drivers/input/input.c
           fi
 
       - name: Verify defconfig exists
